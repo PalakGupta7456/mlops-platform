@@ -31,10 +31,13 @@ def psi(reference: np.ndarray, current: np.ndarray, bins: int = 10) -> float:
     return float(np.sum((c - r) * np.log(c / r)))
 
 
-def drift_report(df: pd.DataFrame, train_end: pd.Timestamp, recent_days: int = 7) -> list[dict]:
+def drift_report(df: pd.DataFrame, recent_days: int = 7, reference_days: int = 28) -> list[dict]:
+    """Last `recent_days` vs the `reference_days` before them: catches sudden shifts
+    rather than flagging the slow march of the seasons every hour."""
     obs = df.dropna(subset=["actual"])
-    ref = obs[obs["time"] <= train_end]
-    cur = obs[obs["time"] > obs["time"].max() - pd.Timedelta(days=recent_days)]
+    end = obs["time"].max()
+    cur = obs[obs["time"] > end - pd.Timedelta(days=recent_days)]
+    ref = obs[(obs["time"] <= end - pd.Timedelta(days=recent_days)) & (obs["time"] > end - pd.Timedelta(days=recent_days + reference_days))]
     out = []
     for f in DRIFT_FEATURES:
         if f not in df:
@@ -80,7 +83,7 @@ def retrain_reasons(drift: list[dict], live: dict, holdout_mae: float | None, da
     if days_since_train >= 1:
         reasons.append("schedule: daily retrain")
     alerts = [d["feature"] for d in drift if d["status"] == "alert"]
-    if alerts:
+    if alerts and days_since_train >= 0.25:   # cooldown: at most one drift retrain per 6 h
         reasons.append(f"drift: PSI ≥ {DRIFT_PSI_ALERT} on {', '.join(alerts)}")
     if holdout_mae and live.get("n_scored", 0) > 200 and live["mae_7d"] > 1.25 * holdout_mae:
         reasons.append(f"performance: live MAE {live['mae_7d']} > 1.25 × holdout {holdout_mae}")

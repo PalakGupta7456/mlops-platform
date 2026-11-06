@@ -21,7 +21,7 @@ def forecast(df: pd.DataFrame, bundle: dict) -> pd.DataFrame:
     issue = obs["time"].max()
     frame = build(df)
     frame = frame[frame["time"] == issue]
-    pred = np.clip(bundle["model"].predict(frame[bundle["features"]]), 0, None)
+    pred = np.clip(bundle["model"].predict(frame), 0, None)
     return pd.DataFrame({"issue_time": frame["time"].values, "target_time": frame["target_time"].values, "horizon": frame["horizon"].values,
                          "pred": pred.round(1), "eso_forecast": frame["eso_forecast"].values, "model_version": bundle["version"]})
 
@@ -32,8 +32,7 @@ def run(df_new: pd.DataFrame | None = None, force_retrain: bool = False) -> dict
     serving = STATE_DIR / "serving" / "model.json"
     meta = json.loads(serving.read_text()) if serving.exists() else None
 
-    train_end = df.dropna(subset=["actual"])["time"].max() - pd.Timedelta(days=7)
-    drift = monitoring.drift_report(df, train_end)
+    drift = monitoring.drift_report(df)
     plog = pd.read_parquet(PRED_LOG) if PRED_LOG.exists() else pd.DataFrame()
     live = monitoring.live_performance(plog, df) if len(plog) else {"n_scored": 0}
     days_since = (t0 - datetime.fromisoformat(meta["exported_at"])).total_seconds() / 86400 if meta else 99

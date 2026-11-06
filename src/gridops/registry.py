@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from .config import CHAMPION, EXPERIMENT, HOLDOUT_DAYS, KEEP_MODEL_VERSIONS, MLFLOW_ARTIFACTS, MLFLOW_URI, MODEL_NAME, PROMOTION_MARGIN, STATE_DIR
-from .features import build, feature_columns
+from .features import PersistenceBlend, build, feature_columns
 
 log = logging.getLogger(__name__)
 os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
@@ -42,23 +42,37 @@ def _mlflow():
     return mlflow
 
 
-def metrics(y, pred, eso=None) -> dict:
+def metrics(y, pred, now) -> dict:
+    """Holdout metrics against the fair offline baseline: persistence ("no change from now").
+    ESO is compared only in the live log, where its forecast is recorded at our issue time
+    (ESO's historical "forecast" field is a last-minute nowcast, not a 24 h-ahead forecast)."""
     err = np.abs(pred - y)
+    pers = np.abs(now - y)
     out = {"mae": float(err.mean()), "rmse": float(np.sqrt(((pred - y) ** 2).mean())),
-           "mape": float((err / np.maximum(np.abs(y), 1)).mean() * 100)}
-    if eso is not None:
-        ok = ~np.isnan(eso)
-        out["eso_mae"] = float(np.abs(eso[ok] - y[ok]).mean())
-        out["skill_vs_eso"] = 1 - out["mae"] / out["eso_mae"]
+           "mape": float((err / np.maximum(np.abs(y), 1)).mean() * 100),
+           "persistence_mae": float(pers.mean()), "skill_vs_persistence": float(1 - err.mean() / pers.mean())}
     return {k: round(v, 4) for k, v in out.items()}
 
 
+VALIDATION_DAYS = 7
+
+
 def split(df: pd.DataFrame):
+    """train | validation (fits blend weights) | holdout (promotion decision): strictly time-ordered, no overlap."""
     frame = build(df).dropna(subset=["target", "ci_now"])
     cutoff = frame["time"].max() - pd.Timedelta(days=HOLDOUT_DAYS)
+    vcut = cutoff - pd.Timedelta(days=VALIDATION_DAYS)
     train = frame[frame["target_time"] <= cutoff]
     hold = frame[frame["time"] > cutoff]
-    return frame, train, hold, cutoff
+    return frame, train, hold, cutoff, vcut
+
+
+def fit_blend(train: pd.DataFrame, vcut, feats, params) -> PersistenceBlend:
+    fit, val = train[train["target_time"] <= vcut], train[train["time"] > vcut]
+    probe = lgb.LGBMRegressor(**params).fit(fit[feats], fit["target"] - fit["ci_now"])
+    weights = PersistenceBlend.fit_weights(probe.predict(val[feats]), val)
+    final = lgb.LGBMRegressor(**params).fit(train[feats], train["target"] - train["ci_now"])
+    return PersistenceBlend(final, weights, feats)
 
 
 def train_and_register(df: pd.DataFrame, params: dict | None = None, reason: str = "scheduled") -> dict:
@@ -66,29 +80,28 @@ def train_and_register(df: pd.DataFrame, params: dict | None = None, reason: str
     from mlflow import MlflowClient
     client = MlflowClient()
     params = {**PARAMS, **(params or {})}
-    frame, train, hold, cutoff = split(df)
+    frame, train, hold, cutoff, vcut = split(df)
     feats = feature_columns(frame)
 
     with mlflow.start_run(run_name=f"challenger-{datetime.now(UTC):%Y%m%d-%H%M}") as run:
-        model = lgb.LGBMRegressor(**params).fit(train[feats], train["target"])
-        pred = model.predict(hold[feats])
-        m = metrics(hold["target"].to_numpy(), pred, hold["eso_forecast"].to_numpy(dtype=float))
+        model = fit_blend(train, vcut, feats, params)
+        pred = model.predict(hold)
+        m = metrics(hold["target"].to_numpy(), pred, hold["ci_now"].to_numpy(dtype=float))
         by_h = (hold.assign(e=np.abs(pred - hold["target"])).groupby("horizon")["e"].mean().round(2))
         mlflow.log_params({**params, "n_features": len(feats), "train_rows": len(train), "holdout_rows": len(hold),
                            "holdout_start": str(cutoff), "trigger": reason})
         mlflow.log_metrics(m)
-        imp = pd.Series(model.booster_.feature_importance("gain"), index=feats).sort_values(ascending=False)
+        imp = pd.Series(model.model.booster_.feature_importance("gain"), index=feats).sort_values(ascending=False)
         mlflow.log_dict({"features": feats, "importance": (imp / imp.sum()).round(4).head(20).to_dict(),
-                         "mae_by_horizon": by_h.to_dict()}, "analysis.json")
-        info = mlflow.lightgbm.log_model(model, name="model", registered_model_name=MODEL_NAME, input_example=hold[feats].head(3))
+                         "mae_by_horizon": by_h.to_dict(), "blend_weights": model.weights}, "analysis.json")
+        info = mlflow.sklearn.log_model(model, name="model", registered_model_name=MODEL_NAME, serialization_format="cloudpickle")
         version = str(info.registered_model_version)
 
     decision = {"challenger": version, "challenger_mae": m["mae"], "champion": None, "champion_mae": None}
     try:
         champ = client.get_model_version_by_alias(MODEL_NAME, CHAMPION)
-        champ_model = mlflow.lightgbm.load_model(f"models:/{MODEL_NAME}@{CHAMPION}")
-        champ_feats = json.loads(client.get_model_version(MODEL_NAME, champ.version).tags.get("features", "[]")) or feats
-        champ_pred = champ_model.predict(hold[champ_feats])
+        champ_model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}@{CHAMPION}")
+        champ_pred = champ_model.predict(hold)
         decision.update(champion=champ.version, champion_mae=round(float(np.abs(champ_pred - hold["target"]).mean()), 4))
     except Exception:  # noqa: BLE001 - first ever run: no champion yet
         champ = None
@@ -96,7 +109,7 @@ def train_and_register(df: pd.DataFrame, params: dict | None = None, reason: str
     promote = champ is None or m["mae"] < decision["champion_mae"] * (1 - PROMOTION_MARGIN)
     client.set_model_version_tag(MODEL_NAME, version, "features", json.dumps(feats))
     client.set_model_version_tag(MODEL_NAME, version, "holdout_mae", str(m["mae"]))
-    client.set_model_version_tag(MODEL_NAME, version, "skill_vs_eso", str(m.get("skill_vs_eso")))
+    client.set_model_version_tag(MODEL_NAME, version, "skill_vs_persistence", str(m["skill_vs_persistence"]))
     client.set_model_version_tag(MODEL_NAME, version, "status", "promoted" if promote else "rejected")
     if promote:
         client.set_registered_model_alias(MODEL_NAME, CHAMPION, version)
@@ -111,7 +124,7 @@ def train_and_register(df: pd.DataFrame, params: dict | None = None, reason: str
 def export_champion(model, feats, version, m, by_h, importance, out_dir=None) -> None:
     out_dir = out_dir or STATE_DIR / "serving"
     out_dir.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": model, "features": feats, "version": version}, out_dir / "model.joblib")
+    joblib.dump({"model": model, "features": model.input_columns, "version": version}, out_dir / "model.joblib")
     (out_dir / "model.json").write_text(json.dumps({"name": MODEL_NAME, "version": version, "metrics": m,
                                                     "mae_by_horizon": by_h, "importance": importance,
                                                     "exported_at": datetime.now(UTC).isoformat(timespec="seconds")}, indent=1))
@@ -146,7 +159,7 @@ def registry_history() -> list[dict]:
     for v in sorted(client.search_model_versions(f"name='{MODEL_NAME}'"), key=lambda v: int(v.version), reverse=True):
         out.append({"version": str(v.version), "created": datetime.fromtimestamp(v.creation_timestamp / 1000, UTC).isoformat(timespec="minutes"),
                     "status": v.tags.get("status"), "mae": float(v.tags.get("holdout_mae", "nan")),
-                    "skill_vs_eso": float(v.tags["skill_vs_eso"]) if v.tags.get("skill_vs_eso") not in (None, "None") else None,
+                    "skill": float(v.tags["skill_vs_persistence"]) if v.tags.get("skill_vs_persistence") not in (None, "None") else None,
                     "champion": str(v.version) == champ})
     return out
 

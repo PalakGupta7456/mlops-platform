@@ -20,7 +20,7 @@ pipeline {
       steps {
         sh '''. .venv/bin/activate
               python -m gridops.pipeline --synthetic
-              python -c "import json; m=json.load(open('state/serving/model.json'))['metrics']; assert m['skill_vs_eso']>0, m"'''
+              python -c "import json; m=json.load(open('state/serving/model.json'))['metrics']; assert m['skill_vs_persistence']>0, m"'''
       }
     }
     stage('Build image') { steps { sh 'docker build -t $IMAGE:$GIT_COMMIT .' } }

@@ -36,8 +36,8 @@
 
     <section class="status" aria-label="Platform status">
       <div class="tile"><p class="t">Champion</p><p class="v" id="s-champ">—</p><p class="d" id="s-champ-d"></p></div>
-      <div class="tile"><p class="t">Holdout error vs ESO</p><p class="v" id="s-hold">—</p><p class="d" id="s-hold-d"></p></div>
-      <div class="tile"><p class="t">Live error, last 7 days</p><p class="v" id="s-live">—</p><p class="d" id="s-live-d"></p></div>
+      <div class="tile"><p class="t">Holdout error vs persistence</p><p class="v" id="s-hold">—</p><p class="d" id="s-hold-d"></p></div>
+      <div class="tile"><p class="t">Live error vs ESO, last 7 days</p><p class="v" id="s-live">—</p><p class="d" id="s-live-d"></p></div>
       <div class="tile"><p class="t">Data drift</p><p class="v" id="s-drift">—</p><p class="d" id="s-drift-d"></p></div>
       <div class="tile"><p class="t">Control loop</p><p class="v" id="s-loop">—</p><p class="d" id="s-loop-d"></p></div>
     </section>
@@ -73,7 +73,7 @@
       <h2>What runs where</h2>
       <div class="pgrid">
         <div><h3>Every hour (GitHub Actions)</h3><p>Ingest ESO carbon intensity and Open-Meteo weather for 5 GB sites. Check drift and live error. Retrain if needed, then run the champion/challenger gate in the MLflow registry. Forecast, publish this console, and trigger CI when a new champion is promoted.</p></div>
-        <div><h3>Every commit (CI)</h3><p>Lint and unit tests. A model quality gate (must beat ESO). kubeconform, terraform validate and promtool. Docker build, Trivy scan, smoke test and push to GHCR. Then a rollout to an ephemeral Kubernetes cluster (kind) and a call through the service.</p></div>
+        <div><h3>Every commit (CI)</h3><p>Lint and unit tests. A model quality gate (must beat persistence). kubeconform, terraform validate and promtool. Docker build, Trivy scan, smoke test and push to GHCR. Then a rollout to an ephemeral Kubernetes cluster (kind) and a call through the service.</p></div>
         <div><h3>Serving</h3><p>FastAPI with Prometheus metrics and hot model reload. Kubernetes manifests with rolling updates, HPA, PDB and probes. Terraform for AWS App Runner, plus Docker Compose with MLflow, Prometheus, Grafana and alert rules. A Jenkinsfile with a manual approval gate and automatic rollback.</p></div>
       </div>
     </section>

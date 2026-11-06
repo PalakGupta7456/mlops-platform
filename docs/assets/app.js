@@ -59,9 +59,9 @@
     const c = d.champion, m = c.metrics, live = d.live || {};
     $("s-champ").textContent = `v${c.version}`;
     $("s-champ-d").textContent = `promoted ${ago(c.exported_at)}`;
-    const skill = m.skill_vs_eso;
-    $("s-hold").innerHTML = `${m.mae.toFixed(1)} <span class="${skill > 0 ? "good" : "bad"}" style="font-size:16px">${skill > 0 ? "−" : "+"}${Math.abs(skill * 100).toFixed(0)}% vs ESO</span>`;
-    $("s-hold-d").textContent = `MAE gCO₂/kWh; ESO ${m.eso_mae.toFixed(1)} on the same days`;
+    const skill = m.skill_vs_persistence;
+    $("s-hold").innerHTML = `${m.mae.toFixed(1)} <span class="${skill > 0 ? "good" : "bad"}" style="font-size:16px">${skill > 0 ? "−" : "+"}${Math.abs(skill * 100).toFixed(0)}% error</span>`;
+    $("s-hold-d").textContent = `MAE gCO₂/kWh over 24 h, against ${m.persistence_mae.toFixed(1)} for "no change"`;
     if (live.n_scored) {
       const better = live.mae_7d < live.eso_mae_7d;
       $("s-live").innerHTML = `${live.mae_7d.toFixed(1)} <span class="${better ? "good" : "warn"}" style="font-size:16px">vs ESO ${live.eso_mae_7d.toFixed(1)}</span>`;
@@ -82,7 +82,7 @@
     $("versions").innerHTML = d.registry.slice(0, 7).map((v) => `
       <li class="${v.status === "promoted" ? "promoted" : ""} ${v.champion ? "champion" : ""}">
         <div class="row1"><b>v${v.version}</b>${v.champion ? '<span class="badge champ">champion</span>' : v.status === "rejected" ? '<span class="badge rej">rejected</span>' : '<span class="badge">retired</span>'}</div>
-        <div class="row2">holdout MAE ${v.mae.toFixed(2)}${v.skill_vs_eso != null ? `, ${(v.skill_vs_eso * 100).toFixed(0)}% better than ESO` : ""}. Registered ${ago(v.created)}</div>
+        <div class="row2">holdout MAE ${v.mae.toFixed(2)}${v.skill != null ? `, ${(v.skill * 100).toFixed(0)}% better than persistence` : ""}. Registered ${ago(v.created)}</div>
       </li>`).join("");
   }
 

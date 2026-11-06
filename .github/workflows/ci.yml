@@ -27,14 +27,14 @@ jobs:
       - run: pip install -e ".[train,api,dev]"
       - run: ruff check .
       - run: pytest -v
-      - name: Quality gate - model must beat the National Grid ESO forecast on held-out data
+      - name: Quality gate - model must beat persistence on held-out data
         run: |
           python -m gridops.pipeline --synthetic
           python - <<'PY'
           import json
           m = json.load(open("state/serving/model.json"))["metrics"]
           print(m)
-          assert m["skill_vs_eso"] > 0, "model is worse than the ESO baseline"
+          assert m["skill_vs_persistence"] > 0, "model is worse than the persistence baseline"
           PY
 
   iac:

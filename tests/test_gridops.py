@@ -33,7 +33,7 @@ def test_features_have_no_leakage():
     y = df.set_index("time")["actual"]
     assert row["ci_now"] == y[row["time"]]
     assert row["target"] == y[row["time"] + pd.Timedelta(hours=24)]
-    assert row["ci_lag_1"] == y[row["time"] - pd.Timedelta(minutes=30)]
+    assert row["ci_lag_1"] == y[row["time"]] - y[row["time"] - pd.Timedelta(minutes=30)]   # relative to now
 
 
 def test_psi_detects_shift():
@@ -102,3 +102,22 @@ def test_retention_never_deletes_the_champion(env, monkeypatch):
     pipeline.run(df, force_retrain=True)   # v3 rejected -> v2 pruned, v1 kept as champion
     hist = registry.registry_history()
     assert [h["version"] for h in hist] == ["3", "1"] and hist[1]["champion"]
+
+
+def test_blend_falls_back_to_persistence_when_model_has_no_edge():
+    from gridops.features import PersistenceBlend
+    frame = pd.DataFrame({"horizon": [1, 1, 2, 2], "ci_now": [100.0, 100, 100, 100], "target": [100.0, 100, 110, 90]})
+    w = PersistenceBlend.fit_weights(np.array([5.0, -5, 10, -10]), frame)
+    assert w[1] == 0.0 and w[2] == 1.0          # useless at h=1 -> persistence; perfect at h=2 -> trusted
+
+
+def test_scale_free_model_survives_a_level_shift():
+    """Regression test for the live failure: training at one level, scoring after the grid shifts up."""
+    from gridops import data, registry
+    df = data.synthetic(days=40, end=END)
+    shift = df["time"] > END - pd.Timedelta(days=10)
+    df.loc[shift, ["actual", "eso_forecast"]] += 90           # November-style jump in the level
+    frame, train, hold, cutoff, vcut = registry.split(df)
+    model = registry.fit_blend(train, vcut, registry.feature_columns(), {**registry.PARAMS, "n_estimators": 80})
+    m = registry.metrics(hold["target"].to_numpy(), model.predict(hold), hold["ci_now"].to_numpy())
+    assert m["skill_vs_persistence"] > 0, m

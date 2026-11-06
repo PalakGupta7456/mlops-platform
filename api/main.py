@@ -94,7 +94,7 @@ def predict(body: PredictIn) -> dict:
     missing = [f for f in b["features"] if f not in X]
     if missing:
         raise HTTPException(422, f"Missing features: {missing[:10]}{'…' if len(missing) > 10 else ''}")
-    pred = np.clip(b["model"].predict(X[b["features"]]), 0, None)
+    pred = np.clip(b["model"].predict(X), 0, None)
     PREDICTIONS.inc(len(pred))
     for v in pred:
         PRED_VALUE.observe(float(v))
