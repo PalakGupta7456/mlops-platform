@@ -1,0 +1,9 @@
+.git
+.github
+docs
+tests
+infra
+deploy
+**/__pycache__
+state/mlartifacts
+state/mlflow.db

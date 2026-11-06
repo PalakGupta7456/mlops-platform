@@ -1,0 +1,18 @@
+groups:
+  - name: gridops
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(gridops_http_requests_total{status=~"5.."}[5m])) / sum(rate(gridops_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: {severity: page}
+        annotations: {summary: "More than 5% of API requests are failing"}
+      - alert: SlowPredictions
+        expr: histogram_quantile(0.95, sum(rate(gridops_http_request_seconds_bucket{path="/predict"}[5m])) by (le)) > 0.5
+        for: 10m
+        labels: {severity: ticket}
+        annotations: {summary: "p95 /predict latency above 500 ms"}
+      - alert: ModelNotLoaded
+        expr: absent(gridops_model_version) or gridops_model_version == 0
+        for: 2m
+        labels: {severity: page}
+        annotations: {summary: "API is running without a champion model"}

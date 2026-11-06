@@ -1,0 +1,71 @@
+name: Hourly MLOps loop
+
+# ingest -> drift + live-performance checks -> retrain if triggered (daily, drift, degradation)
+# -> champion/challenger gate in the MLflow registry -> forecast -> publish console
+# -> if a new champion was promoted, trigger CI to rebuild and redeploy the serving image
+on:
+  schedule:
+    - cron: "52 * * * *"
+  workflow_dispatch:
+    inputs:
+      retrain:
+        description: Force a retrain
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: mlops-loop
+  cancel-in-progress: false
+
+env:
+  MLFLOW_DISABLE_AGENT_HINT: "1"
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[train]"
+      - name: Restore platform state (observations, prediction log, MLflow registry, champion)
+        run: if git fetch --depth 1 origin live-data; then git archive FETCH_HEAD | tar -x -C .; fi
+      - name: Run the control loop
+        id: loop
+        run: |
+          ARGS=""; [ "${{ inputs.retrain }}" = "true" ] && ARGS="--retrain"
+          python -m gridops.pipeline $ARGS | tee out.json
+          echo "promoted=$(python3 -c "import json;d=json.load(open('out.json'));print(str(bool(d['decision'] and d['decision']['promoted'])).lower())")" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json; d = json.load(open("out.json"))
+          print(f"### Champion v{d['champion']}\n\nretrained: {d['retrained']}\n\n```json\n{json.dumps(d, indent=1, default=str)}\n```")
+          PY
+      - name: Save state to live-data branch
+        run: |
+          S=$(mktemp -d); cp -r state "$S/state"
+          cd "$S"; git init -q -b live-data
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A; git commit -q -m "MLOps state $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" live-data
+      - name: New champion -> rebuild and redeploy the serving image
+        if: steps.loop.outputs.promoted == 'true'
+        run: gh workflow run ci.yml --ref main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4

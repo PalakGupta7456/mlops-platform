@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GridOps Console — MLOps for grid carbon</title>
+  <meta name="description" content="A production-style MLOps loop: live GB grid carbon-intensity forecasts with an MLflow registry, champion/challenger promotion, drift monitoring and automated redeploys.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#">GridOps Console</a>
+    <p class="meta" id="meta">Connecting to the platform state…</p>
+    <nav><a href="#registry">Registry</a><a href="#monitoring">Monitoring</a><a href="#platform">Platform</a><a href="https://github.com/PalakGupta7456/mlops-platform">GitHub</a></nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="now">
+        <p class="label">Great Britain grid, right now</p>
+        <p class="big"><span id="now-val">—</span><small>gCO₂/kWh</small></p>
+        <p class="band" id="now-band"></p>
+        <p class="note" id="now-note"></p>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head">
+          <h2>Next 24 hours: our champion against National Grid ESO</h2>
+          <div class="legend"><span><i class="k-obs"></i>Actual</span><span><i class="k-model"></i>Champion model</span><span><i class="k-eso"></i>ESO official forecast</span></div>
+        </div>
+        <div class="chart-box"><canvas id="fc" role="img" aria-label="Carbon intensity history and forecast"></canvas></div>
+      </div>
+    </section>
+
+    <section class="status" aria-label="Platform status">
+      <div class="tile"><p class="t">Champion</p><p class="v" id="s-champ">—</p><p class="d" id="s-champ-d"></p></div>
+      <div class="tile"><p class="t">Holdout error vs ESO</p><p class="v" id="s-hold">—</p><p class="d" id="s-hold-d"></p></div>
+      <div class="tile"><p class="t">Live error, last 7 days</p><p class="v" id="s-live">—</p><p class="d" id="s-live-d"></p></div>
+      <div class="tile"><p class="t">Data drift</p><p class="v" id="s-drift">—</p><p class="d" id="s-drift-d"></p></div>
+      <div class="tile"><p class="t">Control loop</p><p class="v" id="s-loop">—</p><p class="d" id="s-loop-d"></p></div>
+    </section>
+
+    <section class="two" id="registry">
+      <div>
+        <h2>Model registry</h2>
+        <p class="sub">Every retrain registers a challenger in MLflow. It replaces the champion only if it beats it by at least 2% on the same held-out days.</p>
+        <ol class="versions" id="versions"></ol>
+      </div>
+      <div>
+        <h2>Control loop runs</h2>
+        <p class="sub">Hourly runs. Taller bars took longer; marked runs retrained, and filled marks promoted a new champion.</p>
+        <div class="runs" id="runs"></div>
+        <ul class="reasons" id="reasons"></ul>
+      </div>
+    </section>
+
+    <section class="two" id="monitoring">
+      <div>
+        <h2>Live accuracy</h2>
+        <p class="sub">Every forecast is logged and scored when the real value arrives. This shows daily mean absolute error for the model and for ESO over the same half-hours.</p>
+        <div class="chart-box short"><canvas id="live" role="img" aria-label="Daily live error, model vs ESO"></canvas></div>
+      </div>
+      <div>
+        <h2>Input drift</h2>
+        <p class="sub">Population Stability Index of the last 7 days against the training window. 0.1 is a warning and 0.25 forces a retrain.</p>
+        <table class="drift" id="drift"><thead><tr><th>Feature</th><th>PSI</th><th>Training mean</th><th>Last 7 days</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section class="platform" id="platform">
+      <h2>What runs where</h2>
+      <div class="pgrid">
+        <div><h3>Every hour (GitHub Actions)</h3><p>Ingest ESO carbon intensity and Open-Meteo weather for 5 GB sites. Check drift and live error. Retrain if needed, then run the champion/challenger gate in the MLflow registry. Forecast, publish this console, and trigger CI when a new champion is promoted.</p></div>
+        <div><h3>Every commit (CI)</h3><p>Lint and unit tests. A model quality gate (must beat ESO). kubeconform, terraform validate and promtool. Docker build, Trivy scan, smoke test and push to GHCR. Then a rollout to an ephemeral Kubernetes cluster (kind) and a call through the service.</p></div>
+        <div><h3>Serving</h3><p>FastAPI with Prometheus metrics and hot model reload. Kubernetes manifests with rolling updates, HPA, PDB and probes. Terraform for AWS App Runner, plus Docker Compose with MLflow, Prometheus, Grafana and alert rules. A Jenkinsfile with a manual approval gate and automatic rollback.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer>Data: National Grid ESO Carbon Intensity API (carbonintensity.org.uk), Open-Meteo. Forecasts are for demonstration.</footer>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

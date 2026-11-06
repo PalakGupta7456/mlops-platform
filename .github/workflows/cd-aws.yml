@@ -1,0 +1,50 @@
+name: CD to AWS App Runner
+
+# Runs after CI succeeds on main. Skipped unless AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and
+# TF_STATE_BUCKET repository secrets exist. Production deploys require the "production"
+# environment's approval rule (Settings > Environments).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - if: env.HAS_AWS != 'true'
+        run: echo "::notice::AWS secrets not configured - skipping deployment."
+      - uses: actions/checkout@v5
+        if: env.HAS_AWS == 'true'
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: env.HAS_AWS == 'true'
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+      - uses: hashicorp/setup-terraform@v3
+        if: env.HAS_AWS == 'true'
+      - name: Copy image GHCR -> ECR and apply Terraform
+        if: env.HAS_AWS == 'true'
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
+          terraform apply -auto-approve -input=false -target=aws_ecr_repository.api -var image_tag=$SHA
+          REPO=$(terraform output -raw ecr_url 2>/dev/null || aws ecr describe-repositories --repository-names gridops --query 'repositories[0].repositoryUri' --output text)
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${REPO%%/*}"
+          docker pull ghcr.io/palakgupta7456/gridops:$SHA
+          docker tag ghcr.io/palakgupta7456/gridops:$SHA $REPO:$SHA && docker push $REPO:$SHA
+          terraform apply -auto-approve -input=false -var image_tag=$SHA
+          echo "Deployed: $(terraform output -raw api_url)" >> "$GITHUB_STEP_SUMMARY"
