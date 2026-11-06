@@ -79,14 +79,11 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "0"
-          format: table
+      - name: Trivy vulnerability scan (report HIGH/CRITICAL with available fixes)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.56.2 \
+            image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 --no-progress ${{ env.IMAGE }}:${{ github.sha }} | tee trivy.txt
+          echo '### Trivy scan' >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"; tail -40 trivy.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Smoke test
         run: |
           docker run -d -p 8000:8000 --name api ${{ env.IMAGE }}:${{ github.sha }}
