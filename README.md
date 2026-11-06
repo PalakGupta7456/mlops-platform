@@ -29,7 +29,7 @@ Result on the same real holdout: **MAE 23.6 vs 30.3, which is 22% better than pe
 
 Drift monitoring was tuned for the same reason. It compares the last 7 days with the 28 days before them (not with the whole training window, which flags the slow march of the seasons every hour), and drift-triggered retrains have a 6-hour cooldown.
 
-![Console](docs/screenshot.png)
+![Console](docs/screenshot.jpg)
 
 ## The control loop (hourly, serverless on GitHub Actions)
 

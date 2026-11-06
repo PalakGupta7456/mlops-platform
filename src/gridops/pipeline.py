@@ -49,7 +49,7 @@ def run(df_new: pd.DataFrame | None = None, force_retrain: bool = False) -> dict
     bundle = registry.load_serving()
     fc = forecast(df, bundle)
     plog = monitoring.log_forecast(fc, PRED_LOG)
-    live = monitoring.live_performance(plog, df)
+    live = monitoring.live_performance(plog, df, version=bundle["version"])
 
     runs = json.loads(RUNS_FILE.read_text()) if RUNS_FILE.exists() else []
     runs.append({"at": t0.isoformat(timespec="minutes"), "seconds": round((datetime.now(UTC) - t0).total_seconds(), 1),

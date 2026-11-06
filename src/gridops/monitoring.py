@@ -63,7 +63,11 @@ def log_forecast(fc: pd.DataFrame, path=PRED_LOG, keep_days: int = 45) -> pd.Dat
     return log
 
 
-def live_performance(log: pd.DataFrame, df: pd.DataFrame) -> dict:
+def live_performance(log: pd.DataFrame, df: pd.DataFrame, version: str | None = None) -> dict:
+    """Score logged forecasts that have come due. With `version`, only that model's forecasts count,
+    so a newly promoted champion is not blamed (or credited) for its predecessor's predictions."""
+    if version is not None and "model_version" in log:
+        log = log[log["model_version"].astype(str) == str(version)]
     actual = df[["time", "actual"]].dropna().rename(columns={"time": "target_time"})
     log = log.assign(target_time=pd.to_datetime(log["target_time"]))
     s = log.merge(actual, on="target_time")
@@ -73,7 +77,7 @@ def live_performance(log: pd.DataFrame, df: pd.DataFrame) -> dict:
                  day=pd.to_datetime(s["target_time"]).dt.strftime("%Y-%m-%d"))
     daily = s.groupby("day")[["err", "eso_err"]].mean().round(2).tail(30)
     last7 = s[pd.to_datetime(s["target_time"]) > pd.to_datetime(s["target_time"]).max() - pd.Timedelta(days=7)]
-    return {"n_scored": int(len(s)), "mae_7d": round(float(last7["err"].mean()), 2), "eso_mae_7d": round(float(last7["eso_err"].mean()), 2),
+    return {"n_scored": int(len(s)), "model_version": version, "mae_7d": round(float(last7["err"].mean()), 2), "eso_mae_7d": round(float(last7["eso_err"].mean()), 2),
             "win_rate_7d": round(float((last7["err"] < last7["eso_err"]).mean()), 3),
             "daily": {"day": daily.index.tolist(), "model": daily["err"].tolist(), "eso": daily["eso_err"].tolist()}}
 

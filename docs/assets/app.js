@@ -62,13 +62,13 @@
     const skill = m.skill_vs_persistence;
     $("s-hold").innerHTML = `${m.mae.toFixed(1)} <span class="${skill > 0 ? "good" : "bad"}" style="font-size:16px">${skill > 0 ? "−" : "+"}${Math.abs(skill * 100).toFixed(0)}% error</span>`;
     $("s-hold-d").textContent = `MAE gCO₂/kWh over 24 h, against ${m.persistence_mae.toFixed(1)} for "no change"`;
-    if (live.n_scored) {
+    if (live.n_scored >= 48) {
       const better = live.mae_7d < live.eso_mae_7d;
       $("s-live").innerHTML = `${live.mae_7d.toFixed(1)} <span class="${better ? "good" : "warn"}" style="font-size:16px">vs ESO ${live.eso_mae_7d.toFixed(1)}</span>`;
       $("s-live-d").textContent = `beats ESO on ${Math.round(live.win_rate_7d * 100)}% of ${live.n_scored.toLocaleString()} scored half-hours`;
     } else {
       $("s-live").textContent = "warming up";
-      $("s-live-d").textContent = "scores appear as logged forecasts come due";
+      $("s-live-d").textContent = `v${c.version}: ${live.n_scored || 0} half-hours scored so far; shown after the first full day`;
     }
     const alerts = d.drift.filter((x) => x.status === "alert"), warns = d.drift.filter((x) => x.status === "warn");
     $("s-drift").innerHTML = alerts.length ? `<span class="bad">${alerts.length} alert${alerts.length > 1 ? "s" : ""}</span>` : warns.length ? `<span class="warn">${warns.length} warning${warns.length > 1 ? "s" : ""}</span>` : `<span class="good">stable</span>`;
