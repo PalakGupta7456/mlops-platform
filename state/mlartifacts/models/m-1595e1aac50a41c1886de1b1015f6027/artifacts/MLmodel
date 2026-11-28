@@ -1,0 +1,57 @@
+artifact_path: file:///home/runner/work/mlops-platform/mlops-platform/state/mlartifacts/models/m-1595e1aac50a41c1886de1b1015f6027/artifacts
+flavors:
+  lightgbm:
+    code: null
+    data: model.skops
+    lgb_version: 4.7.0
+    model_class: lightgbm.sklearn.LGBMRegressor
+    serialization_format: skops
+    skops_trusted_types:
+    - lightgbm.sklearn.LGBMRegressor
+    - collections.OrderedDict
+    - lightgbm.basic.Booster
+    - lightgbm.sklearn.LGBMClassifier
+  python_function:
+    data: model.skops
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.lightgbm
+    python_version: 3.12.16
+is_signature_from_type_hint: false
+mlflow_version: 3.18.0
+model_id: m-1595e1aac50a41c1886de1b1015f6027
+model_size_bytes: 4066179
+model_uuid: m-1595e1aac50a41c1886de1b1015f6027
+prompts: null
+run_id: 749ddde9a9e2421fb4aeaf45c6a5ddd9
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "double", "name": "ci_now", "required": true}, {"type": "double",
+    "name": "ci_lag_1", "required": true}, {"type": "double", "name": "ci_lag_2",
+    "required": true}, {"type": "double", "name": "ci_lag_4", "required": true}, {"type":
+    "double", "name": "ci_lag_12", "required": true}, {"type": "double", "name": "ci_lag_24",
+    "required": true}, {"type": "double", "name": "ci_lag_48", "required": true},
+    {"type": "double", "name": "ci_lag_96", "required": true}, {"type": "double",
+    "name": "ci_lag_336", "required": true}, {"type": "double", "name": "ci_mean_4",
+    "required": true}, {"type": "double", "name": "ci_mean_12", "required": true},
+    {"type": "double", "name": "ci_mean_48", "required": true}, {"type": "double",
+    "name": "ci_std_48", "required": true}, {"type": "double", "name": "ci_diff_1",
+    "required": true}, {"type": "double", "name": "wind_now", "required": true}, {"type":
+    "long", "name": "horizon", "required": true}, {"type": "double", "name": "tgt_wind_mean",
+    "required": true}, {"type": "double", "name": "tgt_wind_cubed", "required": true},
+    {"type": "double", "name": "tgt_solar_mean", "required": true}, {"type": "double",
+    "name": "tgt_temp_mean", "required": true}, {"type": "double", "name": "tgt_cloud_mean",
+    "required": true}, {"type": "double", "name": "tgt_wind_change", "required": true},
+    {"type": "double", "name": "tgt_hod_sin", "required": true}, {"type": "double",
+    "name": "tgt_hod_cos", "required": true}, {"type": "double", "name": "tgt_dow_sin",
+    "required": true}, {"type": "double", "name": "tgt_dow_cos", "required": true},
+    {"type": "long", "name": "tgt_weekend", "required": true}]'
+  outputs: '[{"type": "double", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-11-06 19:00:24.298175'
